@@ -126,19 +126,23 @@ pub fn recognize_let_bindings(node: IrNode) -> IrNode {
             function,
             argument,
         } => {
+            let function = recognize_let_bindings(*function);
             let argument = recognize_let_bindings(*argument);
 
-            if let IrNode::Lambda { param_name, body } = *function {
-                let body = recognize_let_bindings(*body);
-                return IrNode::LetBinding {
-                    name: param_name,
-                    value: Box::new(argument),
-                    body: Box::new(body),
-                };
+            match function {
+                IrNode::Lambda { param_name, body } => {
+                    let body = recognize_let_bindings(*body);
+                    return IrNode::LetBinding {
+                        name: param_name,
+                        value: Box::new(argument),
+                        body: Box::new(body),
+                    };
+                }
+                _ => {}
             }
 
             IrNode::Apply {
-                function: Box::new(recognize_let_bindings(*function.clone())),
+                function: Box::new(function),
                 argument: Box::new(argument),
             }
         }

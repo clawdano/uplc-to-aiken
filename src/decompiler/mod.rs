@@ -41,6 +41,10 @@ pub fn decompile(ir: IrNode) -> IrNode {
     let ir = passes::simplify_constants(ir);
     let ir = passes::recognize_let_bindings(ir);
 
+    // Final cleanup: catch any remaining lambda-application pairs
+    let ir = passes::recognize_let_bindings(ir);
+    let ir = passes::recognize_binops(ir);
+
     // Phase 7: Name assignment
     let ir = names::assign_names(ir);
     ir

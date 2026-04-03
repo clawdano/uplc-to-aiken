@@ -30,6 +30,25 @@ impl AikenEmitter {
         self.scope.pop();
     }
 
+    /// Extract a Lambda from possibly nested LetBindings.
+    /// Returns (pre_lets, param_name, body) if the innermost node is a Lambda.
+    fn extract_applied_lambda(
+        &self,
+        node: &IrNode,
+    ) -> Option<(Vec<(String, IrNode)>, String, IrNode)> {
+        match node {
+            IrNode::Lambda { param_name, body } => {
+                Some((Vec::new(), param_name.clone(), *body.clone()))
+            }
+            IrNode::LetBinding { name, value, body } => {
+                let mut result = self.extract_applied_lambda(body)?;
+                result.0.insert(0, (name.clone(), *value.clone()));
+                Some(result)
+            }
+            _ => None,
+        }
+    }
+
     fn resolve_var(&self, index: usize) -> String {
         if index > 0 && index <= self.scope.len() {
             self.scope[self.scope.len() - index].clone()
@@ -65,10 +84,38 @@ impl AikenEmitter {
                 function,
                 argument,
             } => {
-                self.emit_node(function, indent);
-                self.output.push('(');
-                self.emit_node(argument, indent);
-                self.output.push(')');
+                // Convert Apply(Lambda, arg) to let-binding in output
+                // Check for Apply(Lambda, arg) or Apply(LetBinding{..., Lambda}, arg)
+                match self.extract_applied_lambda(function) {
+                    Some((pre_lets, param_name, body)) => {
+                        // Emit any pre-lets first
+                        for (let_name, let_value) in &pre_lets {
+                            self.output.push_str(&format!("let {} = ", let_name));
+                            self.emit_node(let_value, indent);
+                            self.output.push('\n');
+                            self.push_scope(let_name);
+                            self.indent(indent);
+                        }
+                        // Emit as let-binding
+                        self.output.push_str(&format!("let {} = ", param_name));
+                        self.emit_node(argument, indent);
+                        self.output.push('\n');
+                        self.push_scope(&param_name);
+                        self.indent(indent);
+                        self.emit_node(&body, indent);
+                        self.pop_scope();
+                        // Pop pre-let scopes
+                        for _ in &pre_lets {
+                            self.pop_scope();
+                        }
+                    }
+                    None => {
+                        self.emit_node(function, indent);
+                        self.output.push('(');
+                        self.emit_node(argument, indent);
+                        self.output.push(')');
+                    }
+                }
             }
 
             IrNode::Constant(c) => self.emit_constant(c),
