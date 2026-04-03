@@ -1,6 +1,7 @@
 mod aiken_patterns;
 mod names;
 mod passes;
+mod recursion;
 mod v3_patterns;
 mod validator;
 

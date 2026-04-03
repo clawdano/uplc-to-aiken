@@ -249,6 +249,38 @@ pub fn recognize_list_ops(node: IrNode) -> IrNode {
                 };
             }
 
+            // Sha2_256 / Blake2b_256 / Sha3_256
+            if is_forced_builtin(&*function, &IrBuiltin::Sha2_256) {
+                return IrNode::UnaryOp {
+                    op: UnaryOpKind::Sha256,
+                    operand: Box::new(argument),
+                };
+            }
+            if is_forced_builtin(&*function, &IrBuiltin::Blake2b_256) {
+                return IrNode::UnaryOp {
+                    op: UnaryOpKind::Blake2b256,
+                    operand: Box::new(argument),
+                };
+            }
+            if is_forced_builtin(&*function, &IrBuiltin::LengthOfByteString) {
+                return IrNode::UnaryOp {
+                    op: UnaryOpKind::Length,
+                    operand: Box::new(argument),
+                };
+            }
+            if is_forced_builtin(&*function, &IrBuiltin::EncodeUtf8) {
+                return IrNode::UnaryOp {
+                    op: UnaryOpKind::EncodeUtf8,
+                    operand: Box::new(argument),
+                };
+            }
+            if is_forced_builtin(&*function, &IrBuiltin::DecodeUtf8) {
+                return IrNode::UnaryOp {
+                    op: UnaryOpKind::DecodeUtf8,
+                    operand: Box::new(argument),
+                };
+            }
+
             IrNode::Apply {
                 function: Box::new(recognize_list_ops(*function)),
                 argument: Box::new(argument),
