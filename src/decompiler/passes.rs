@@ -230,19 +230,19 @@ pub fn recognize_list_ops(node: IrNode) -> IrNode {
         } => {
             let argument = recognize_list_ops(*argument);
 
-            if is_forced_builtin(&function, &IrBuiltin::HeadList) {
+            if is_forced_builtin(&*function, &IrBuiltin::HeadList) {
                 return IrNode::UnaryOp {
                     op: UnaryOpKind::Head,
                     operand: Box::new(argument),
                 };
             }
-            if is_forced_builtin(&function, &IrBuiltin::TailList) {
+            if is_forced_builtin(&*function, &IrBuiltin::TailList) {
                 return IrNode::UnaryOp {
                     op: UnaryOpKind::Tail,
                     operand: Box::new(argument),
                 };
             }
-            if is_forced_builtin(&function, &IrBuiltin::NullList) {
+            if is_forced_builtin(&*function, &IrBuiltin::NullList) {
                 return IrNode::UnaryOp {
                     op: UnaryOpKind::IsNull,
                     operand: Box::new(argument),

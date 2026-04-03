@@ -1,3 +1,4 @@
+mod aiken_patterns;
 mod names;
 mod passes;
 mod v3_patterns;
@@ -8,34 +9,38 @@ use crate::ir::IrNode;
 /// Run all decompilation passes on the IR to recognize patterns
 /// and produce higher-level Aiken constructs.
 pub fn decompile(ir: IrNode) -> IrNode {
-    // V3 patterns first - they operate on the raw Constr/Case structure
+    // Phase 1: V3 structural patterns
     let ir = v3_patterns::unpack_builtin_pack(ir);
     let ir = v3_patterns::recognize_v3_if_then_else(ir);
     let ir = v3_patterns::recognize_constr_case_destruct(ir);
 
-    // Standard pattern recognition
+    // Phase 2: Basic pattern recognition (before validator stripping)
     let ir = passes::recognize_if_then_else(ir);
     let ir = passes::recognize_let_bindings(ir);
     let ir = passes::recognize_trace(ir);
     let ir = passes::recognize_bool_literals(ir);
     let ir = passes::recognize_unit(ir);
-    let ir = passes::recognize_list_ops(ir);
-    let ir = passes::recognize_data_deconstruction(ir);
-    // Binops after let-binding recognition so curried builtins are visible
     let ir = passes::recognize_binops(ir);
 
-    // Validator wrapper recognition (after other passes clean up the structure)
+    // Phase 3: Validator wrapper (inlines builtins, strips wrapper)
     let ir = validator::recognize_validator(ir);
 
-    // Second pass of let-binding recognition (catches patterns exposed by validator stripping)
+    // Phase 4: Re-run passes that benefit from inlined builtins
+    let ir = passes::recognize_let_bindings(ir);
+    let ir = passes::recognize_list_ops(ir);
+    let ir = passes::recognize_data_deconstruction(ir);
+    let ir = passes::recognize_binops(ir);
+
+    // Phase 5: Aiken-specific patterns
+    let ir = aiken_patterns::recognize_aiken_patterns(ir);
+
+    // Phase 6: High-level sugar
+    let ir = passes::recognize_list_ops(ir);
+    let ir = passes::recognize_logical_ops(ir);
+    let ir = passes::simplify_constants(ir);
     let ir = passes::recognize_let_bindings(ir);
 
-    // Logical operator recognition (after if-then-else and bool recognition)
-    let ir = passes::recognize_logical_ops(ir);
-
-    // Simplify constant expressions
-    let ir = passes::simplify_constants(ir);
-
+    // Phase 7: Name assignment
     let ir = names::assign_names(ir);
     ir
 }
