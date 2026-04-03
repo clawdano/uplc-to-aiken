@@ -13,26 +13,161 @@ use crate::ir::*;
 /// ```
 ///
 /// This pass strips the outermost lambda and implementation-detail let-bindings,
-/// leaving just the core validator logic.
+/// adjusting De Bruijn indices to account for removed binders.
 pub fn recognize_validator(node: IrNode) -> IrNode {
     match node {
         IrNode::Lambda { body, .. } => {
             // Strip the outermost lambda (multi-validator dispatch)
-            strip_builtin_lets(*body)
+            // Shift De Bruijn indices down by 1 to account for removed lambda
+            let body = shift_debruijn(*body, -1, 1);
+            strip_builtin_lets(body)
         }
         other => other,
     }
 }
 
 /// Strip the builtin let-bindings that are Aiken implementation details.
-/// These are the forced builtin functions that Aiken packs for efficiency.
+/// Each time we strip a let-binding, we shift De Bruijn indices down
+/// to account for the removed binder.
 fn strip_builtin_lets(node: IrNode) -> IrNode {
     match node {
-        IrNode::LetBinding { ref name, ref body, .. }
-            if is_builtin_let_name(name) =>
-        {
-            strip_builtin_lets(*body.clone())
+        IrNode::LetBinding {
+            ref name,
+            value: _,
+            ref body,
+        } if is_builtin_let_name(name) => {
+            // Remove this binding and shift De Bruijn indices in the body
+            let body = shift_debruijn(*body.clone(), -1, 1);
+            strip_builtin_lets(body)
         }
+        other => other,
+    }
+}
+
+/// Shift De Bruijn indices in an IR node.
+///
+/// `delta`: how much to shift (negative = decrement, positive = increment)
+/// `cutoff`: only shift variables with index >= cutoff (to avoid shifting bound vars)
+fn shift_debruijn(node: IrNode, delta: i64, cutoff: usize) -> IrNode {
+    match node {
+        IrNode::Var(index) => {
+            if index >= cutoff {
+                let new_index = (index as i64 + delta).max(0) as usize;
+                IrNode::Var(new_index)
+            } else {
+                IrNode::Var(index)
+            }
+        }
+
+        IrNode::Lambda { param_name, body } => IrNode::Lambda {
+            param_name,
+            body: Box::new(shift_debruijn(*body, delta, cutoff + 1)),
+        },
+
+        IrNode::LetBinding { name, value, body } => IrNode::LetBinding {
+            name,
+            value: Box::new(shift_debruijn(*value, delta, cutoff)),
+            body: Box::new(shift_debruijn(*body, delta, cutoff + 1)),
+        },
+
+        IrNode::Apply {
+            function,
+            argument,
+        } => IrNode::Apply {
+            function: Box::new(shift_debruijn(*function, delta, cutoff)),
+            argument: Box::new(shift_debruijn(*argument, delta, cutoff)),
+        },
+
+        IrNode::IfElse {
+            condition,
+            then_branch,
+            else_branch,
+        } => IrNode::IfElse {
+            condition: Box::new(shift_debruijn(*condition, delta, cutoff)),
+            then_branch: Box::new(shift_debruijn(*then_branch, delta, cutoff)),
+            else_branch: Box::new(shift_debruijn(*else_branch, delta, cutoff)),
+        },
+
+        IrNode::Force(inner) => IrNode::Force(Box::new(shift_debruijn(*inner, delta, cutoff))),
+        IrNode::Delay(inner) => IrNode::Delay(Box::new(shift_debruijn(*inner, delta, cutoff))),
+
+        IrNode::BinOp { op, left, right } => IrNode::BinOp {
+            op,
+            left: Box::new(shift_debruijn(*left, delta, cutoff)),
+            right: Box::new(shift_debruijn(*right, delta, cutoff)),
+        },
+
+        IrNode::UnaryOp { op, operand } => IrNode::UnaryOp {
+            op,
+            operand: Box::new(shift_debruijn(*operand, delta, cutoff)),
+        },
+
+        IrNode::Trace { message, body } => IrNode::Trace {
+            message: Box::new(shift_debruijn(*message, delta, cutoff)),
+            body: Box::new(shift_debruijn(*body, delta, cutoff)),
+        },
+
+        IrNode::Match { subject, branches } => IrNode::Match {
+            subject: Box::new(shift_debruijn(*subject, delta, cutoff)),
+            branches: branches
+                .into_iter()
+                .map(|b| MatchBranch {
+                    pattern: b.pattern,
+                    body: shift_debruijn(b.body, delta, cutoff),
+                })
+                .collect(),
+        },
+
+        IrNode::Constr {
+            tag,
+            type_hint,
+            fields,
+        } => IrNode::Constr {
+            tag,
+            type_hint,
+            fields: fields
+                .into_iter()
+                .map(|f| shift_debruijn(f, delta, cutoff))
+                .collect(),
+        },
+
+        IrNode::Comment { text, node } => IrNode::Comment {
+            text,
+            node: Box::new(shift_debruijn(*node, delta, cutoff)),
+        },
+
+        IrNode::Expect {
+            pattern,
+            value,
+            body,
+        } => IrNode::Expect {
+            pattern: Box::new(shift_debruijn(*pattern, delta, cutoff)),
+            value: Box::new(shift_debruijn(*value, delta, cutoff)),
+            body: Box::new(shift_debruijn(*body, delta, cutoff + 1)),
+        },
+
+        IrNode::Block(items) => IrNode::Block(
+            items
+                .into_iter()
+                .map(|i| shift_debruijn(i, delta, cutoff))
+                .collect(),
+        ),
+
+        IrNode::ListLit(items) => IrNode::ListLit(
+            items
+                .into_iter()
+                .map(|i| shift_debruijn(i, delta, cutoff))
+                .collect(),
+        ),
+
+        IrNode::TupleLit(items) => IrNode::TupleLit(
+            items
+                .into_iter()
+                .map(|i| shift_debruijn(i, delta, cutoff))
+                .collect(),
+        ),
+
+        // Leaf nodes
         other => other,
     }
 }

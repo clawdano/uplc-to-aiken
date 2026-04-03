@@ -9,12 +9,32 @@ pub fn emit(node: &IrNode) -> String {
 
 struct AikenEmitter {
     output: String,
+    /// Scope stack for resolving De Bruijn indices to names.
+    /// Index 0 = outermost binding.
+    scope: Vec<String>,
 }
 
 impl AikenEmitter {
     fn new() -> Self {
         Self {
             output: String::new(),
+            scope: Vec::new(),
+        }
+    }
+
+    fn push_scope(&mut self, name: &str) {
+        self.scope.push(name.to_string());
+    }
+
+    fn pop_scope(&mut self) {
+        self.scope.pop();
+    }
+
+    fn resolve_var(&self, index: usize) -> String {
+        if index > 0 && index <= self.scope.len() {
+            self.scope[self.scope.len() - index].clone()
+        } else {
+            format!("var_{}", index)
         }
     }
 
@@ -27,16 +47,18 @@ impl AikenEmitter {
     fn emit_node(&mut self, node: &IrNode, indent: usize) {
         match node {
             IrNode::Var(idx) => {
-                self.output.push_str(&format!("var_{}", idx));
+                self.output.push_str(&self.resolve_var(*idx));
             }
 
             IrNode::Lambda { param_name, body } => {
                 self.output.push_str(&format!("fn({}) {{\n", param_name));
+                self.push_scope(param_name);
                 self.indent(indent + 1);
                 self.emit_node(body, indent + 1);
                 self.output.push('\n');
                 self.indent(indent);
                 self.output.push('}');
+                self.pop_scope();
             }
 
             IrNode::Apply {
@@ -93,8 +115,10 @@ impl AikenEmitter {
                 self.output.push_str(&format!("let {} = ", name));
                 self.emit_node(value, indent);
                 self.output.push('\n');
+                self.push_scope(name);
                 self.indent(indent);
                 self.emit_node(body, indent);
+                self.pop_scope();
             }
 
             IrNode::BinOp { op, left, right } => {
