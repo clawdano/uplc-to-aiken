@@ -27,6 +27,12 @@ pub fn decompile(ir: IrNode) -> IrNode {
     // Validator wrapper recognition (after other passes clean up the structure)
     let ir = validator::recognize_validator(ir);
 
+    // Logical operator recognition (after if-then-else and bool recognition)
+    let ir = passes::recognize_logical_ops(ir);
+
+    // Simplify constant expressions
+    let ir = passes::simplify_constants(ir);
+
     let ir = names::assign_names(ir);
     ir
 }

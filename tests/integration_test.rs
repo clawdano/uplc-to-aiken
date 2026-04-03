@@ -28,7 +28,12 @@ fn math_check_contains_arithmetic() {
     assert!(output.contains("* 2"), "Expected '* 2' in output:\n{}", output);
     assert!(output.contains("== 84"), "Expected '== 84' in output:\n{}", output);
     assert!(output.contains("0 <"), "Expected '0 <' in output:\n{}", output);
-    assert!(output.contains("False"), "Expected 'False' in output:\n{}", output);
+    // The `if a { b } else { False }` pattern is now recognized as `a && b`
+    assert!(
+        output.contains("&&") || output.contains("False"),
+        "Expected '&&' or 'False' in output:\n{}",
+        output
+    );
 }
 
 #[test]

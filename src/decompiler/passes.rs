@@ -302,6 +302,62 @@ pub fn recognize_data_deconstruction(node: IrNode) -> IrNode {
     }
 }
 
+/// Recognize logical operators from if-else patterns:
+/// - `if a { b } else { False }` -> `a && b`
+/// - `if a { True } else { b }` -> `a || b`
+pub fn recognize_logical_ops(node: IrNode) -> IrNode {
+    match node {
+        IrNode::IfElse {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            let condition = recognize_logical_ops(*condition);
+            let then_branch = recognize_logical_ops(*then_branch);
+            let else_branch = recognize_logical_ops(*else_branch);
+
+            // `if a { b } else { False }` -> `a && b`
+            if matches!(&else_branch, IrNode::BoolLit(false)) {
+                return IrNode::BinOp {
+                    op: BinOpKind::And,
+                    left: Box::new(condition),
+                    right: Box::new(then_branch),
+                };
+            }
+
+            // `if a { True } else { b }` -> `a || b`
+            if matches!(&then_branch, IrNode::BoolLit(true)) {
+                return IrNode::BinOp {
+                    op: BinOpKind::Or,
+                    left: Box::new(condition),
+                    right: Box::new(else_branch),
+                };
+            }
+
+            IrNode::IfElse {
+                condition: Box::new(condition),
+                then_branch: Box::new(then_branch),
+                else_branch: Box::new(else_branch),
+            }
+        }
+        _ => map_children(node, recognize_logical_ops),
+    }
+}
+
+/// Simplify constant patterns:
+/// - Integer and ByteString constants -> Aiken literals
+/// - Remove redundant wrapping
+pub fn simplify_constants(node: IrNode) -> IrNode {
+    match node {
+        IrNode::Constant(IrConstant::Integer(n)) => IrNode::IntLit(n),
+        IrNode::Constant(IrConstant::ByteString(bs)) => IrNode::ByteArrayLit(bs),
+        IrNode::Constant(IrConstant::String(s)) => IrNode::StringLit(s),
+        IrNode::Constant(IrConstant::Bool(b)) => IrNode::BoolLit(b),
+        IrNode::Constant(IrConstant::Unit) => IrNode::Unit,
+        _ => map_children(node, simplify_constants),
+    }
+}
+
 // === Helpers ===
 
 fn is_forced_builtin(node: &IrNode, expected: &IrBuiltin) -> bool {
