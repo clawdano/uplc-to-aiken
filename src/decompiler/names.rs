@@ -1,13 +1,6 @@
-use crate::ir::IrNode;
+use crate::ir::*;
 
 /// Assign meaningful names to variables based on usage context.
-///
-/// UPLC uses De Bruijn indices, so all variable names are lost during compilation.
-/// This pass tries to infer reasonable names based on how variables are used:
-/// - Validator params get datum/redeemer/context
-/// - Variables used with UnIData get int-like names
-/// - Variables used with UnBData get bytes-like names
-/// - etc.
 pub fn assign_names(ir: IrNode) -> IrNode {
     let mut namer = NameAssigner::new();
     namer.assign(ir)
@@ -47,7 +40,7 @@ impl NameAssigner {
             }
 
             IrNode::LetBinding { name, value, body } => {
-                let assigned_name = if name == "arg" {
+                let assigned_name = if name.starts_with("arg") || name.starts_with("field_") {
                     self.infer_name_from_value(&value)
                 } else {
                     name
@@ -81,7 +74,7 @@ impl NameAssigner {
                 subject: Box::new(self.assign(*subject)),
                 branches: branches
                     .into_iter()
-                    .map(|b| crate::ir::MatchBranch {
+                    .map(|b| MatchBranch {
                         pattern: b.pattern,
                         body: self.assign(b.body),
                     })
@@ -119,6 +112,38 @@ impl NameAssigner {
                 node: Box::new(self.assign(*node)),
             },
 
+            IrNode::FnCall {
+                function_name,
+                args,
+            } => IrNode::FnCall {
+                function_name,
+                args: args.into_iter().map(|a| self.assign(a)).collect(),
+            },
+
+            IrNode::FieldAccess {
+                record,
+                field_index,
+                field_name,
+            } => IrNode::FieldAccess {
+                record: Box::new(self.assign(*record)),
+                field_index,
+                field_name,
+            },
+
+            IrNode::Expect {
+                pattern,
+                value,
+                body,
+            } => IrNode::Expect {
+                pattern: Box::new(self.assign(*pattern)),
+                value: Box::new(self.assign(*value)),
+                body: Box::new(self.assign(*body)),
+            },
+
+            IrNode::Block(items) => {
+                IrNode::Block(items.into_iter().map(|i| self.assign(i)).collect())
+            }
+
             // Leaf nodes pass through
             other => other,
         }
@@ -126,28 +151,84 @@ impl NameAssigner {
 
     fn infer_name_from_value(&mut self, value: &IrNode) -> String {
         match value {
+            // constr_fields(x) -> "fields" or "datum_fields"
+            IrNode::FnCall {
+                function_name,
+                ..
+            } => {
+                match function_name.as_str() {
+                    "constr_fields" => self.fresh_name("fields"),
+                    "constr_index" => self.fresh_name("tag"),
+                    "un_constr_data" => self.fresh_name("constr"),
+                    _ => self.fresh_name("val"),
+                }
+            }
+
             IrNode::UnaryOp { op, .. } => match op {
-                crate::ir::UnaryOpKind::Head => self.fresh_name("head"),
-                crate::ir::UnaryOpKind::Tail => self.fresh_name("tail"),
-                crate::ir::UnaryOpKind::Length => self.fresh_name("len"),
-                crate::ir::UnaryOpKind::Sha256 => self.fresh_name("hash"),
-                crate::ir::UnaryOpKind::Blake2b256 => self.fresh_name("hash"),
+                UnaryOpKind::Head => self.fresh_name("head"),
+                UnaryOpKind::Tail => self.fresh_name("tail"),
+                UnaryOpKind::Length => self.fresh_name("len"),
+                UnaryOpKind::Sha256 | UnaryOpKind::Blake2b256 => self.fresh_name("hash"),
+                UnaryOpKind::IsNull => self.fresh_name("is_empty"),
                 _ => self.fresh_name("val"),
             },
+
             IrNode::BinOp { op, .. } => match op {
-                crate::ir::BinOpKind::Add
-                | crate::ir::BinOpKind::Sub
-                | crate::ir::BinOpKind::Mul
-                | crate::ir::BinOpKind::Div => self.fresh_name("result"),
-                crate::ir::BinOpKind::Eq
-                | crate::ir::BinOpKind::Neq
-                | crate::ir::BinOpKind::Lt
-                | crate::ir::BinOpKind::Lte
-                | crate::ir::BinOpKind::Gt
-                | crate::ir::BinOpKind::Gte => self.fresh_name("is"),
-                _ => self.fresh_name("val"),
+                BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div | BinOpKind::Mod => {
+                    self.fresh_name("result")
+                }
+                BinOpKind::Eq | BinOpKind::Neq | BinOpKind::Lt | BinOpKind::Lte
+                | BinOpKind::Gt | BinOpKind::Gte | BinOpKind::And | BinOpKind::Or => {
+                    self.fresh_name("check")
+                }
+                BinOpKind::Append => self.fresh_name("combined"),
             },
+
+            IrNode::FieldAccess { .. } => self.fresh_name("field"),
+
+            // Comment wrapping indicates type info
+            IrNode::Comment { text, .. } => {
+                if text.contains("Int") {
+                    self.fresh_name("n")
+                } else if text.contains("ByteArray") {
+                    self.fresh_name("bytes")
+                } else if text.contains("List") {
+                    self.fresh_name("items")
+                } else if text.contains("Pairs") {
+                    self.fresh_name("pairs")
+                } else {
+                    self.fresh_name("val")
+                }
+            }
+
+            // Apply of builtin.tail_list -> "rest" or "tail"
+            IrNode::Apply { function, .. } => {
+                if is_tail_list(function) {
+                    self.fresh_name("rest")
+                } else if is_head_list(function) {
+                    self.fresh_name("item")
+                } else {
+                    self.fresh_name("val")
+                }
+            }
+
             _ => self.fresh_name("val"),
         }
+    }
+}
+
+fn is_tail_list(node: &IrNode) -> bool {
+    match node {
+        IrNode::Builtin(IrBuiltin::TailList) => true,
+        IrNode::Force(inner) => is_tail_list(inner),
+        _ => false,
+    }
+}
+
+fn is_head_list(node: &IrNode) -> bool {
+    match node {
+        IrNode::Builtin(IrBuiltin::HeadList) => true,
+        IrNode::Force(inner) => is_head_list(inner),
+        _ => false,
     }
 }
