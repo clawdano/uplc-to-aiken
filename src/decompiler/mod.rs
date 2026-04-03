@@ -1,6 +1,8 @@
 mod aiken_patterns;
+mod inline;
 mod names;
 mod passes;
+mod pattern_match;
 mod recursion;
 mod v3_patterns;
 mod validator;
@@ -35,17 +37,22 @@ pub fn decompile(ir: IrNode) -> IrNode {
     // Phase 5: Aiken-specific patterns
     let ir = aiken_patterns::recognize_aiken_patterns(ir);
 
-    // Phase 6: High-level sugar
+    // Phase 5.5: Inline simple partial-application lets to expose patterns
+    let ir = inline::inline_simple_lets(ir);
+    // Re-run binops after inlining (catches equals_integer(N)(x) -> N == x)
+    let ir = passes::recognize_binops(ir);
+
+    // Phase 6: Pattern matching recognition
+    let ir = pattern_match::recognize_pattern_matching(ir);
+
+    // Phase 7: High-level sugar
     let ir = passes::recognize_list_ops(ir);
     let ir = passes::recognize_logical_ops(ir);
     let ir = passes::simplify_constants(ir);
     let ir = passes::recognize_let_bindings(ir);
-
-    // Final cleanup: catch any remaining lambda-application pairs
-    let ir = passes::recognize_let_bindings(ir);
     let ir = passes::recognize_binops(ir);
 
-    // Phase 7: Name assignment
+    // Phase 8: Name assignment
     let ir = names::assign_names(ir);
     ir
 }

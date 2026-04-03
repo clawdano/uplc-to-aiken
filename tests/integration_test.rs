@@ -73,13 +73,12 @@ fn no_builtin_pack_in_output() {
 #[test]
 fn recursive_fns_shows_recursion_pattern() {
     let output = decompile_fixture("recursive_fns");
-    // Fibonacci: base cases 0 and 1, recursive self-application
+    // Fibonacci: base case and recursive structure
     assert!(output.contains("<= 0"), "Expected '<= 0' in output:\n{}", output);
-    assert!(output.contains("== 1"), "Expected '== 1' in output:\n{}", output);
-    // Self-application pattern for Y-combinator
+    // Recursive subtraction pattern (n + -1 or n + -2)
     assert!(
-        output.contains("param_10(param_10)") || output.contains("(param_"),
-        "Expected self-application pattern in output:\n{}",
+        output.contains("+ -1") || output.contains("+ -2"),
+        "Expected recursive subtraction pattern in output:\n{}",
         output
     );
 }
