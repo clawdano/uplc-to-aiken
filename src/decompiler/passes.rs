@@ -70,45 +70,7 @@ pub fn recognize_if_then_else(node: IrNode) -> IrNode {
             }
         }
 
-        // Recurse into other node types
-        IrNode::Lambda { param_name, body } => IrNode::Lambda {
-            param_name,
-            body: Box::new(recognize_if_then_else(*body)),
-        },
-        IrNode::Force(inner) => IrNode::Force(Box::new(recognize_if_then_else(*inner))),
-        IrNode::Delay(inner) => IrNode::Delay(Box::new(recognize_if_then_else(*inner))),
-        IrNode::IfElse {
-            condition,
-            then_branch,
-            else_branch,
-        } => IrNode::IfElse {
-            condition: Box::new(recognize_if_then_else(*condition)),
-            then_branch: Box::new(recognize_if_then_else(*then_branch)),
-            else_branch: Box::new(recognize_if_then_else(*else_branch)),
-        },
-        IrNode::Match { subject, branches } => IrNode::Match {
-            subject: Box::new(recognize_if_then_else(*subject)),
-            branches: branches
-                .into_iter()
-                .map(|b| MatchBranch {
-                    pattern: b.pattern,
-                    body: recognize_if_then_else(b.body),
-                })
-                .collect(),
-        },
-        IrNode::Constr {
-            tag,
-            type_hint,
-            fields,
-        } => IrNode::Constr {
-            tag,
-            type_hint,
-            fields: fields
-                .into_iter()
-                .map(recognize_if_then_else)
-                .collect(),
-        },
-        other => other,
+        _ => map_children(node, recognize_if_then_else),
     }
 }
 
@@ -153,41 +115,7 @@ pub fn recognize_binops(node: IrNode) -> IrNode {
             }
         }
 
-        IrNode::Lambda { param_name, body } => IrNode::Lambda {
-            param_name,
-            body: Box::new(recognize_binops(*body)),
-        },
-        IrNode::Force(inner) => IrNode::Force(Box::new(recognize_binops(*inner))),
-        IrNode::Delay(inner) => IrNode::Delay(Box::new(recognize_binops(*inner))),
-        IrNode::IfElse {
-            condition,
-            then_branch,
-            else_branch,
-        } => IrNode::IfElse {
-            condition: Box::new(recognize_binops(*condition)),
-            then_branch: Box::new(recognize_binops(*then_branch)),
-            else_branch: Box::new(recognize_binops(*else_branch)),
-        },
-        IrNode::Match { subject, branches } => IrNode::Match {
-            subject: Box::new(recognize_binops(*subject)),
-            branches: branches
-                .into_iter()
-                .map(|b| MatchBranch {
-                    pattern: b.pattern,
-                    body: recognize_binops(b.body),
-                })
-                .collect(),
-        },
-        IrNode::Constr {
-            tag,
-            type_hint,
-            fields,
-        } => IrNode::Constr {
-            tag,
-            type_hint,
-            fields: fields.into_iter().map(recognize_binops).collect(),
-        },
-        other => other,
+        _ => map_children(node, recognize_binops),
     }
 }
 
@@ -215,46 +143,7 @@ pub fn recognize_let_bindings(node: IrNode) -> IrNode {
             }
         }
 
-        IrNode::Lambda { param_name, body } => IrNode::Lambda {
-            param_name,
-            body: Box::new(recognize_let_bindings(*body)),
-        },
-        IrNode::Force(inner) => IrNode::Force(Box::new(recognize_let_bindings(*inner))),
-        IrNode::Delay(inner) => IrNode::Delay(Box::new(recognize_let_bindings(*inner))),
-        IrNode::IfElse {
-            condition,
-            then_branch,
-            else_branch,
-        } => IrNode::IfElse {
-            condition: Box::new(recognize_let_bindings(*condition)),
-            then_branch: Box::new(recognize_let_bindings(*then_branch)),
-            else_branch: Box::new(recognize_let_bindings(*else_branch)),
-        },
-        IrNode::LetBinding { name, value, body } => IrNode::LetBinding {
-            name,
-            value: Box::new(recognize_let_bindings(*value)),
-            body: Box::new(recognize_let_bindings(*body)),
-        },
-        IrNode::Match { subject, branches } => IrNode::Match {
-            subject: Box::new(recognize_let_bindings(*subject)),
-            branches: branches
-                .into_iter()
-                .map(|b| MatchBranch {
-                    pattern: b.pattern,
-                    body: recognize_let_bindings(b.body),
-                })
-                .collect(),
-        },
-        IrNode::Constr {
-            tag,
-            type_hint,
-            fields,
-        } => IrNode::Constr {
-            tag,
-            type_hint,
-            fields: fields.into_iter().map(recognize_let_bindings).collect(),
-        },
-        other => other,
+        _ => map_children(node, recognize_let_bindings),
     }
 }
 
@@ -296,37 +185,7 @@ pub fn recognize_trace(node: IrNode) -> IrNode {
             }
         }
 
-        IrNode::Lambda { param_name, body } => IrNode::Lambda {
-            param_name,
-            body: Box::new(recognize_trace(*body)),
-        },
-        IrNode::Force(inner) => IrNode::Force(Box::new(recognize_trace(*inner))),
-        IrNode::Delay(inner) => IrNode::Delay(Box::new(recognize_trace(*inner))),
-        IrNode::IfElse {
-            condition,
-            then_branch,
-            else_branch,
-        } => IrNode::IfElse {
-            condition: Box::new(recognize_trace(*condition)),
-            then_branch: Box::new(recognize_trace(*then_branch)),
-            else_branch: Box::new(recognize_trace(*else_branch)),
-        },
-        IrNode::LetBinding { name, value, body } => IrNode::LetBinding {
-            name,
-            value: Box::new(recognize_trace(*value)),
-            body: Box::new(recognize_trace(*body)),
-        },
-        IrNode::Match { subject, branches } => IrNode::Match {
-            subject: Box::new(recognize_trace(*subject)),
-            branches: branches
-                .into_iter()
-                .map(|b| MatchBranch {
-                    pattern: b.pattern,
-                    body: recognize_trace(b.body),
-                })
-                .collect(),
-        },
-        other => other,
+        _ => map_children(node, recognize_trace),
     }
 }
 
@@ -349,62 +208,7 @@ pub fn recognize_bool_literals(node: IrNode) -> IrNode {
 
         IrNode::Constant(IrConstant::Bool(b)) => IrNode::BoolLit(b),
 
-        IrNode::Lambda { param_name, body } => IrNode::Lambda {
-            param_name,
-            body: Box::new(recognize_bool_literals(*body)),
-        },
-        IrNode::Apply {
-            function,
-            argument,
-        } => IrNode::Apply {
-            function: Box::new(recognize_bool_literals(*function)),
-            argument: Box::new(recognize_bool_literals(*argument)),
-        },
-        IrNode::Force(inner) => IrNode::Force(Box::new(recognize_bool_literals(*inner))),
-        IrNode::Delay(inner) => IrNode::Delay(Box::new(recognize_bool_literals(*inner))),
-        IrNode::IfElse {
-            condition,
-            then_branch,
-            else_branch,
-        } => IrNode::IfElse {
-            condition: Box::new(recognize_bool_literals(*condition)),
-            then_branch: Box::new(recognize_bool_literals(*then_branch)),
-            else_branch: Box::new(recognize_bool_literals(*else_branch)),
-        },
-        IrNode::LetBinding { name, value, body } => IrNode::LetBinding {
-            name,
-            value: Box::new(recognize_bool_literals(*value)),
-            body: Box::new(recognize_bool_literals(*body)),
-        },
-        IrNode::Match { subject, branches } => IrNode::Match {
-            subject: Box::new(recognize_bool_literals(*subject)),
-            branches: branches
-                .into_iter()
-                .map(|b| MatchBranch {
-                    pattern: b.pattern,
-                    body: recognize_bool_literals(b.body),
-                })
-                .collect(),
-        },
-        IrNode::Constr {
-            tag,
-            type_hint,
-            fields,
-        } => IrNode::Constr {
-            tag,
-            type_hint,
-            fields: fields.into_iter().map(recognize_bool_literals).collect(),
-        },
-        IrNode::Trace { message, body } => IrNode::Trace {
-            message: Box::new(recognize_bool_literals(*message)),
-            body: Box::new(recognize_bool_literals(*body)),
-        },
-        IrNode::BinOp { op, left, right } => IrNode::BinOp {
-            op,
-            left: Box::new(recognize_bool_literals(*left)),
-            right: Box::new(recognize_bool_literals(*right)),
-        },
-        other => other,
+        _ => map_children(node, recognize_bool_literals),
     }
 }
 
