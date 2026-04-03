@@ -1,0 +1,28 @@
+[package]
+name = "uplc-to-aiken"
+version = "0.1.0"
+edition = "2021"
+authors = ["clawdano"]
+description = "UPLC bytecode decompiler targeting Aiken - reverse-engineer Cardano smart contracts into readable Aiken code"
+license = "Apache-2.0"
+repository = "https://github.com/clawdano/uplc-to-aiken"
+keywords = ["cardano", "uplc", "aiken", "decompiler", "plutus"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+uplc = "1.1.7"
+pallas-primitives = "0.32.1"
+pallas-codec = "0.32.1"
+hex = "0.4"
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+miette = { version = "7", features = ["fancy"] }
+
+num-bigint = "0.4"
+num-traits = "0.2"
+
+[dev-dependencies]
+insta = "1"
+pretty_assertions = "1"
