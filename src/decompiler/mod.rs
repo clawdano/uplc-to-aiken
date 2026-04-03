@@ -52,6 +52,9 @@ pub fn decompile(ir: IrNode) -> IrNode {
     let ir = passes::recognize_let_bindings(ir);
     let ir = passes::recognize_binops(ir);
 
+    // Phase 7.5: Recursion recognition (Y-combinator / self-application)
+    let ir = recursion::recognize_recursion(ir);
+
     // Phase 8: Name assignment
     let ir = names::assign_names(ir);
     ir

@@ -159,6 +159,16 @@ impl AikenEmitter {
             }
 
             IrNode::LetBinding { name, value, body } => {
+                // Special case: FnDef inside a let-binding emits as a standalone fn definition
+                if name.starts_with("__fn_") {
+                    if let IrNode::FnDef { .. } = value.as_ref() {
+                        self.emit_node(value, indent);
+                        self.output.push('\n');
+                        self.indent(indent);
+                        self.emit_node(body, indent);
+                        return;
+                    }
+                }
                 self.output.push_str(&format!("let {} = ", name));
                 self.emit_node(value, indent);
                 self.output.push('\n');

@@ -144,6 +144,12 @@ impl NameAssigner {
                 IrNode::Block(items.into_iter().map(|i| self.assign(i)).collect())
             }
 
+            IrNode::FnDef { name, params, body } => IrNode::FnDef {
+                name,
+                params,
+                body: Box::new(self.assign(*body)),
+            },
+
             // Leaf nodes pass through
             other => other,
         }

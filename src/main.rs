@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+mod blockfrost;
 mod codegen;
 mod decompiler;
 mod ir;
@@ -48,6 +49,29 @@ enum Commands {
         #[arg(long)]
         show_ast: bool,
     },
+
+    /// Fetch and decompile scripts from Blockfrost
+    Fetch {
+        /// Blockfrost API key (or set BLOCKFROST_API_KEY env var)
+        #[arg(long, env = "BLOCKFROST_API_KEY")]
+        api_key: String,
+
+        /// Script hash to fetch and decompile
+        #[arg(long, group = "fetch_mode")]
+        script_hash: Option<String>,
+
+        /// Fetch and decompile N recent Plutus V2 scripts
+        #[arg(long, group = "fetch_mode")]
+        recent_v2: Option<usize>,
+
+        /// Network (mainnet, preprod, preview)
+        #[arg(long, default_value = "mainnet")]
+        network: String,
+
+        /// Output directory for decompiled scripts
+        #[arg(short, long)]
+        output_dir: Option<PathBuf>,
+    },
 }
 
 #[derive(Clone, Debug, clap::ValueEnum)]
@@ -84,7 +108,6 @@ fn main() -> miette::Result<()> {
                 return Ok(());
             }
 
-            // Lower UPLC to our IR
             let ir_program = ir::lower(&uplc_program);
 
             if show_ir {
@@ -92,10 +115,7 @@ fn main() -> miette::Result<()> {
                 return Ok(());
             }
 
-            // Run decompilation passes (pattern recognition)
             let optimized = decompiler::decompile(ir_program);
-
-            // Generate Aiken source code
             let aiken_source = codegen::emit(&optimized);
 
             match output {
@@ -111,5 +131,96 @@ fn main() -> miette::Result<()> {
 
             Ok(())
         }
+
+        Commands::Fetch {
+            api_key,
+            script_hash,
+            recent_v2,
+            network,
+            output_dir,
+        } => {
+            let client = blockfrost::BlockfrostClient::new(&api_key, &network);
+
+            if let Some(hash) = script_hash {
+                // Fetch a single script by hash
+                eprintln!("Fetching script {}...", hash);
+                let info = client
+                    .get_script_info(&hash)
+                    .map_err(|e| miette::miette!("Failed to fetch script info: {}", e))?;
+                eprintln!("  Type: {}", info.script_type);
+
+                let cbor = client
+                    .get_script_cbor(&hash)
+                    .map_err(|e| miette::miette!("Failed to fetch script CBOR: {}", e))?;
+
+                match decompile_cbor_hex(&cbor) {
+                    Ok(source) => {
+                        if let Some(ref dir) = output_dir {
+                            std::fs::create_dir_all(dir)
+                                .map_err(|e| miette::miette!("Failed to create dir: {}", e))?;
+                            let path = dir.join(format!("{}.ak", &hash[..12]));
+                            std::fs::write(&path, &source)
+                                .map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                            eprintln!("  Wrote {}", path.display());
+                        } else {
+                            println!("// Script: {}", hash);
+                            println!("// Type: {}", info.script_type);
+                            println!();
+                            println!("{}", source);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("  Failed to decompile: {}", e);
+                    }
+                }
+            } else if let Some(count) = recent_v2 {
+                // Fetch recent Plutus V2 scripts
+                eprintln!(
+                    "Fetching up to {} recent Plutus V2 scripts from {}...",
+                    count, network
+                );
+                let scripts = client
+                    .fetch_plutus_v2_scripts(count)
+                    .map_err(|e| miette::miette!("Failed to fetch scripts: {}", e))?;
+
+                eprintln!("Found {} Plutus V2 scripts", scripts.len());
+
+                for (hash, cbor) in &scripts {
+                    eprint!("  {} ... ", &hash[..12]);
+                    match decompile_cbor_hex(cbor) {
+                        Ok(source) => {
+                            if let Some(ref dir) = output_dir {
+                                std::fs::create_dir_all(dir)
+                                    .map_err(|e| miette::miette!("Failed to create dir: {}", e))?;
+                                let path = dir.join(format!("{}.ak", &hash[..12]));
+                                std::fs::write(&path, &source)
+                                    .map_err(|e| miette::miette!("Failed to write: {}", e))?;
+                                eprintln!("OK ({} lines)", source.lines().count());
+                            } else {
+                                println!("// Script: {}", hash);
+                                println!("{}", source);
+                                println!();
+                                eprintln!("OK");
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("FAILED: {}", e);
+                        }
+                    }
+                }
+            } else {
+                eprintln!("Error: provide either --script-hash or --recent-v2");
+                std::process::exit(1);
+            }
+
+            Ok(())
+        }
     }
+}
+
+fn decompile_cbor_hex(hex_str: &str) -> Result<String, String> {
+    let program = parser::parse_from_cbor_hex(hex_str).map_err(|e| format!("{}", e))?;
+    let ir = ir::lower(&program);
+    let optimized = decompiler::decompile(ir);
+    Ok(codegen::emit(&optimized))
 }
