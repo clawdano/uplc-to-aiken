@@ -20,9 +20,56 @@ pub fn recognize_validator(node: IrNode) -> IrNode {
             // Strip the outermost lambda (multi-validator dispatch)
             // Shift De Bruijn indices down by 1 to account for removed lambda
             let body = shift_debruijn(*body, -1, 1);
-            strip_builtin_lets(body)
+            let body = strip_builtin_lets(body);
+            // Strip the multi-validator dispatch wrapper:
+            // `if <body> { Void } else { fail(fail) }` -> <body>
+            strip_dispatch_wrapper(body)
         }
         other => other,
+    }
+}
+
+/// Strip the multi-validator dispatch wrapper.
+///
+/// Aiken wraps validators in:
+/// ```
+/// if <validator_body> { Void } else { fail(fail) }
+/// ```
+/// This is the dispatch mechanism - we strip it to expose the body.
+fn strip_dispatch_wrapper(node: IrNode) -> IrNode {
+    match node {
+        IrNode::IfElse {
+            condition,
+            then_branch,
+            else_branch,
+        } => {
+            // Check if else is `fail(fail)` or similar error pattern
+            let is_fail_else = is_fail_pattern(&else_branch);
+            // Check if then is Void/Unit
+            let is_void_then = matches!(
+                *then_branch,
+                IrNode::Unit | IrNode::Constant(IrConstant::Unit)
+            );
+
+            if is_void_then && is_fail_else {
+                return *condition;
+            }
+
+            IrNode::IfElse {
+                condition,
+                then_branch,
+                else_branch,
+            }
+        }
+        other => other,
+    }
+}
+
+fn is_fail_pattern(node: &IrNode) -> bool {
+    match node {
+        IrNode::Error => true,
+        IrNode::Apply { function, .. } => matches!(**function, IrNode::Error),
+        _ => false,
     }
 }
 

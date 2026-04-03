@@ -27,6 +27,9 @@ pub fn decompile(ir: IrNode) -> IrNode {
     // Validator wrapper recognition (after other passes clean up the structure)
     let ir = validator::recognize_validator(ir);
 
+    // Second pass of let-binding recognition (catches patterns exposed by validator stripping)
+    let ir = passes::recognize_let_bindings(ir);
+
     // Logical operator recognition (after if-then-else and bool recognition)
     let ir = passes::recognize_logical_ops(ir);
 
