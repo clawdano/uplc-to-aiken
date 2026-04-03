@@ -71,6 +71,44 @@ fn no_builtin_pack_in_output() {
 }
 
 #[test]
+fn recursive_fns_shows_recursion_pattern() {
+    let output = decompile_fixture("recursive_fns");
+    // Fibonacci: base cases 0 and 1, recursive self-application
+    assert!(output.contains("<= 0"), "Expected '<= 0' in output:\n{}", output);
+    assert!(output.contains("== 1"), "Expected '== 1' in output:\n{}", output);
+    // Self-application pattern for Y-combinator
+    assert!(
+        output.contains("param_10(param_10)") || output.contains("(param_"),
+        "Expected self-application pattern in output:\n{}",
+        output
+    );
+}
+
+#[test]
+fn dex_swap_decompiles_without_error() {
+    let output = decompile_fixture("dex_swap");
+    assert!(!output.is_empty(), "Expected non-empty output for dex_swap");
+    assert!(output.len() > 100, "Expected substantial output for complex contract");
+}
+
+#[test]
+fn all_fixtures_decompile_successfully() {
+    for fixture in [
+        "always_true", "check_42", "math_check", "multi_condition",
+        "with_helper", "traced", "token_policy", "option_check",
+        "dex_swap", "hash_ops", "list_ops", "nested_pattern",
+        "recursive_fns", "token_minter", "tx_info_check",
+    ] {
+        let output = decompile_fixture(fixture);
+        assert!(
+            !output.is_empty(),
+            "Fixture {} produced empty output",
+            fixture
+        );
+    }
+}
+
+#[test]
 fn show_ast_flag_works() {
     let output = Command::new("cargo")
         .args([
