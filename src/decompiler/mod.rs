@@ -1,6 +1,7 @@
 mod names;
 mod passes;
 mod v3_patterns;
+mod validator;
 
 use crate::ir::IrNode;
 
@@ -22,6 +23,10 @@ pub fn decompile(ir: IrNode) -> IrNode {
     let ir = passes::recognize_data_deconstruction(ir);
     // Binops after let-binding recognition so curried builtins are visible
     let ir = passes::recognize_binops(ir);
+
+    // Validator wrapper recognition (after other passes clean up the structure)
+    let ir = validator::recognize_validator(ir);
+
     let ir = names::assign_names(ir);
     ir
 }
